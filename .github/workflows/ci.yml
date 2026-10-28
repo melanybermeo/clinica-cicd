@@ -37,3 +37,41 @@ jobs:
         run: pip install -r requirements.txt
       - name: Ejecutar pruebas
         run: python manage.py test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir imagen Docker
+        run: docker build -t clinica-doctor:${{ github.sha }} .
+      - name: Listar imagenes
+        run: docker images
+      - name: Guardar imagen como artefacto
+        run: docker save clinica-doctor:${{ github.sha }} -o clinica-doctor.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: imagen-docker
+          path: clinica-doctor.tar
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Levantar con Docker Compose
+        run: docker compose up -d --build
+      - name: Ver contenedores
+        run: docker ps
+      - name: Validar que responde
+        run: |
+          for i in $(seq 1 30); do
+            curl -s -o /dev/null http://localhost:8000 && break
+            sleep 2
+          done
+          curl -sL -o /dev/null -w "Codigo HTTP: %{http_code}\n" http://localhost:8000
+      - name: Logs del contenedor web
+        run: docker compose logs web
+      - name: Detener
+        run: docker compose down
